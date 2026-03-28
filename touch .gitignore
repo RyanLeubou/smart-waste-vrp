@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environnement
+venv/
+venv_clean/
+.env
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Map générée
+map.html
+
+# Redis backup
+data/bins_backup.json
