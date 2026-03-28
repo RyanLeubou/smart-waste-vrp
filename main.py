@@ -1,5 +1,5 @@
 """
-MAIN - VRP dynamique contrôlé (démo)
+MAIN - VRP dynamique complet 
 """
 
 import time
@@ -19,21 +19,29 @@ from visualization.graph import build_graph, draw_graph
 # CONFIGURATION
 # ------------------------
 
+# Dépôts 
 depots = [
-    {"coord": (4.05, 9.75)},
-    {"coord": (4.06, 9.76)},
-    {"coord": (4.07, 9.77)}
+    {"coord": (4.0511, 9.7679)},  
+    {"coord": (4.0435, 9.7080)},  
+    {"coord": (4.0300, 9.7200)},  
+    {"coord": (4.0600, 9.6800)},  
+    {"coord": (4.0900, 9.8000)}   
 ]
 
-vehicles = [
-    {"capacity": 50, "depot": 0},
-    {"capacity": 50, "depot": 0},
-    {"capacity": 50, "depot": 1},
-    {"capacity": 50, "depot": 2}
-]
+# 4 camions par dépôt (total = 20)
+vehicles = []
+for depot_id in range(len(depots)):
+    for _ in range(4):
+        vehicles.append({
+            "capacity": 50,
+            "depot": depot_id
+        })
 
-NUM_BINS = 15
-ITERATIONS = 3   # 🔥 nombre de cycles dynamiques
+# Nombre de poubelles
+NUM_BINS = 50
+
+# Nombre d’itérations (VRP dynamique)
+ITERATIONS = 3
 
 
 # ------------------------
@@ -42,18 +50,26 @@ ITERATIONS = 3   # 🔥 nombre de cycles dynamiques
 
 def run_dynamic():
 
-    print("\n🚀 Lancement VRP dynamique (mode démo)\n")
+    print("\nLancement VRP dynamique (version finale)\n")
 
+    # Reset Redis
     reset_bins()
+
+    # Stockage des KPI globaux (cumul)
+    global_kpis = []
 
     # ------------------------
     # Initialisation
     # ------------------------
     bins = generate_bins(NUM_BINS)
 
+    if not bins:
+        print("Aucune poubelle générée")
+        return
+
     for step in range(ITERATIONS):
 
-        print(f"\n🔄 Itération {step + 1}/{ITERATIONS}")
+        print(f"\nIteration {step + 1}/{ITERATIONS}")
 
         # ------------------------
         # Mise à jour dynamique
@@ -63,6 +79,10 @@ def run_dynamic():
 
         bins = get_bins()
 
+        if not bins:
+            print("Aucune donnée récupérée")
+            continue
+
         # ------------------------
         # LOCATIONS
         # ------------------------
@@ -71,24 +91,29 @@ def run_dynamic():
         ]
 
         # ------------------------
-        # MATRICE
+        # MATRICE DES DISTANCES (OSRM)
         # ------------------------
         matrix = get_distance_matrix(locations)
 
         # ------------------------
-        # DEMANDES
+        # DEMANDES (CVRP)
         # ------------------------
-        demands = [0]*len(depots) + [
-            int(b["level"]/10) for b in bins
+        demands = [0] * len(depots) + [
+            int(b["level"] / 10) for b in bins
         ]
 
         # ------------------------
-        # TIME WINDOWS
+        # TIME WINDOWS (VRPTW)
         # ------------------------
-        time_windows = [(0, 10000)] * len(locations)
+        time_windows = [(0, 10000)] * len(depots) + [
+            b.get("time_window", (0, 10000)) for b in bins
+        ]
+
+        # Sécurité
+        assert len(time_windows) == len(locations)
 
         # ------------------------
-        # MODELE
+        # MODELE VRP
         # ------------------------
         data = create_data_model(
             matrix,
@@ -98,17 +123,17 @@ def run_dynamic():
         )
 
         # ------------------------
-        # VRP
+        # SOLVEUR
         # ------------------------
         routes = solve_vrp(data, time_windows)
 
-        print("🚛 ROUTES :")
+        print("\nRoutes optimisées :")
         for i, r in enumerate(routes):
             depot_id = vehicles[i]["depot"]
-            print(f"Camion {i} (dépôt {depot_id}) → {r}")
+            print(f"Camion {i} (arrondissement {depot_id}) -> {r}")
 
         # ------------------------
-        # METRICS
+        # KPI TOURNÉE
         # ------------------------
         result = compute_metrics(
             routes,
@@ -119,30 +144,34 @@ def run_dynamic():
             num_depots=len(depots)
         )
 
-        print("📊 KPI :", result)
+        print("\nKPI tournée :", result)
 
-        # pause pour voir évolution
+        # Stockage pour KPI global
+        global_kpis.append(result)
+
+        # Pause simulation
         time.sleep(2)
 
     # ------------------------
-    # KPI GLOBAL
+    # KPI GLOBAL (CUMUL)
     # ------------------------
-    compute_global_metrics()
+    print("\n===== KPI GLOBAL =====")
+    compute_global_metrics(global_kpis)
 
     # ------------------------
-    # CARTE FINALE
+    # CARTE
     # ------------------------
     display_routes(locations, routes, len(depots))
-    print("\n🗺️ Carte finale générée : map.html")
+    print("\nCarte générée : map.html")
 
     # ------------------------
-    # GRAPHE FINAL
+    # GRAPHE
     # ------------------------
-    print("\n📊 Affichage du graphe final...")
+    print("\nAffichage du graphe...")
     G = build_graph(locations)
     draw_graph(G, routes, len(depots))
 
-    print("\n✅ FIN DU PROGRAMME")
+    print("\nFin du programme")
 
 
 # ------------------------

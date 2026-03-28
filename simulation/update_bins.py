@@ -1,23 +1,25 @@
-"""
-Simulation du remplissage des poubelles en temps réel
-"""
-
 import random
 
 def update_bins(bins):
     """
-    Augmente aléatoirement le niveau de remplissage
+    Mise à jour des poubelles :
+    - niveau de remplissage
+    - fenêtre de temps (VRPTW)
     """
 
     for b in bins:
 
-        # augmentation aléatoire
-        increment = random.randint(1, 10)
+        # ------------------------
+        # Remplissage dynamique
+        # ------------------------
+        b["level"] = min(100, b["level"] + random.randint(5, 20))
 
-        b["level"] = min(100, b["level"] + increment)
+        # ------------------------
+        # VRPTW (fenêtre de temps)
+        # ------------------------
+        start = random.randint(0, 500)
+        end = start + random.randint(200, 500)
 
-        # 🔥 si poubelle devient critique → on peut ajuster la fenêtre
-        if b["level"] > 80:
-            b["time_window"] = (0, 300)  # urgente
+        b["time_window"] = (start, end)
 
     return bins

@@ -1,82 +1,82 @@
 """
-Metrics complet :
-- temps réel (par tournée)
-- global (historique)
+Calcul des KPI 
 """
 
-# 🔥 stockage global
-history = []
 
-
-def compute_metrics(routes, distance_matrix, demands, capacity, total_bins, num_depots):
-
-    print("\n📊 ===== KPI TOURNÉE =====")
+def compute_metrics(routes, matrix, demands, capacity, total_bins, num_depots):
+    """
+    KPI pour UNE tournée
+    """
 
     total_distance = 0
-    total_load = 0
-    visited_bins = set()
+    total_collected = 0
 
     for route in routes:
 
         route_load = 0
 
         for i in range(len(route) - 1):
+            total_distance += matrix[route[i]][route[i + 1]]
 
-            from_node = route[i]
-            to_node = route[i+1]
+        for node in route:
+            if node >= num_depots:
+                route_load += demands[node]
 
-            total_distance += distance_matrix[from_node][to_node]
+        total_collected += route_load
 
-            # ignorer dépôts
-            if from_node >= num_depots:
-                route_load += demands[from_node]
-                visited_bins.add(from_node)
+    capacity_total = capacity * len(routes)
 
-        print(f"🚛 Charge camion : {route_load}/{capacity}")
-        total_load += route_load
+    fill = (total_collected / capacity_total) * 100 if capacity_total > 0 else 0
 
-    # éviter division par 0
-    avg_fill = (total_load / (capacity * len(routes))) * 100 if routes else 0
+    co2 = total_distance * 0.27  # facteur simplifié
 
-    uncollected = total_bins - len(visited_bins)
-
-    co2 = total_distance * 0.27
-
-    print(f"📏 Distance : {round(total_distance,2)}")
-    print(f"📦 Remplissage : {round(avg_fill,2)} %")
-    print(f"🗑️ Non collectées : {uncollected}")
-    print(f"🌍 CO2 : {round(co2,2)} kg")
-
-    # 🔥 stocker dans historique
-    history.append({
-        "distance": total_distance,
-        "fill": avg_fill,
-        "co2": co2,
-        "uncollected": uncollected
+    uncollected = total_bins - len({
+        node for route in routes for node in route if node >= num_depots
     })
 
-    return {
+    result = {
         "distance": total_distance,
-        "fill": avg_fill,
+        "fill": fill,
         "co2": co2,
-        "uncollected": uncollected
+        "uncollected": uncollected,
+        "collected": total_collected,
+        "capacity_total": capacity_total
     }
 
+    print("\n===== KPI TOURNÉE =====")
+    print(f"Distance : {total_distance}")
+    print(f"Remplissage : {round(fill, 2)} %")
+    print(f"CO2 : {round(co2, 2)} kg")
+    print(f"Non collectées : {uncollected}")
 
-# 🔥 METRICS GLOBAL
-def compute_global_metrics():
+    return result
 
-    if not history:
-        print("⚠ Aucun historique")
-        return
 
-    total_distance = sum(h["distance"] for h in history)
-    avg_fill = sum(h["fill"] for h in history) / len(history)
-    total_co2 = sum(h["co2"] for h in history)
-    total_uncollected = sum(h["uncollected"] for h in history)
+def compute_global_metrics(kpis):
+    """
+    KPI globaux cumulés (pondérés)
+    """
 
-    print("\n📊 ===== KPI GLOBAL =====")
-    print(f"📏 Distance totale : {round(total_distance,2)}")
-    print(f"📦 Remplissage moyen : {round(avg_fill,2)} %")
-    print(f"🌍 CO2 total : {round(total_co2,2)} kg")
-    print(f"🗑️ Total non collectées : {total_uncollected}")
+    total_distance = sum(k["distance"] for k in kpis)
+    total_co2 = sum(k["co2"] for k in kpis)
+    total_uncollected = sum(k["uncollected"] for k in kpis)
+
+    total_collected = sum(k["collected"] for k in kpis)
+    total_capacity = sum(k["capacity_total"] for k in kpis)
+
+    fill = (total_collected / total_capacity) * 100 if total_capacity > 0 else 0
+
+    result = {
+        "distance": total_distance,
+        "fill": fill,
+        "co2": total_co2,
+        "uncollected": total_uncollected
+    }
+
+    print("\n===== KPI GLOBAL =====")
+    print(f"Distance totale : {total_distance}")
+    print(f"Remplissage global : {round(fill, 2)} %")
+    print(f"CO2 total : {round(total_co2, 2)} kg")
+    print(f"Total non collectées : {total_uncollected}")
+
+    return result

@@ -30,8 +30,9 @@ def create_data_model(distance_matrix, demands, vehicles, depots):
     return {
         "distance_matrix": distance_matrix,
         "demands": demands,
-        "vehicle_capacities": vehicle_capacities,
+        "vehicle_capacities": [v["capacity"] for v in vehicles],
         "num_vehicles": len(vehicles),
-        "starts": starts,
-        "ends": ends,
+        "starts": [v["depot"] for v in vehicles],
+        "ends": [v["depot"] for v in vehicles],
+        "num_depots": len(depots)
     }
