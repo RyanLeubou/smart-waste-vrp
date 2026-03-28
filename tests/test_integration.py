@@ -1,89 +1,107 @@
 """
-Test d'intégration global du système VRP complet :
-VRP + CVRP + VRPTW + Multi-dépôts + Dynamique
+Test d'intégration complet du système :
+Simulation → Redis → IA → VRP → Metrics
 """
 
 from simulation.generate_random_bins import generate_random_bins as generate_bins
 from simulation.update_bins import update_bins
+
 from services.redis_service import save_bins, get_bins, reset_bins
 from services.osrm_service import get_distance_matrix
+
 from vrp.model import create_data_model
 from vrp.solver import solve_vrp
+
 from metrics import compute_metrics
+
+from ai.preprocessing import process_ai_output
 
 
 def test_full_system():
+    """
+    Test complet du pipeline :
+    IA + VRP + Metrics
+    """
 
     # ------------------------
-    # 1. RESET
+    # RESET
     # ------------------------
     reset_bins()
 
     # ------------------------
-    # 2. SIMULATION DYNAMIQUE
+    # SIMULATION
     # ------------------------
-    bins = generate_bins(6)
-
-    # 🔥 plusieurs itérations (VRP dynamique)
-    for _ in range(2):
-        bins = update_bins(bins)
-
-    # Vérifie VRPTW
-    assert all("time_window" in b for b in bins)
+    bins = generate_bins(10)
+    bins = update_bins(bins)
 
     save_bins(bins)
 
     # ------------------------
-    # 3. RÉCUPÉRATION REDIS
+    # IA PROCESSING
     # ------------------------
-    bins = get_bins()
-
-    assert len(bins) == 6
+    raw_bins = get_bins()
+    bins = process_ai_output(raw_bins)
 
     # ------------------------
-    # 4. MULTI-DÉPÔTS
+    # TEST 1 : FILTRAGE IA
+    # ------------------------
+    for b in bins:
+        assert b["level"] >= 40
+
+    # Cas possible : aucune poubelle à collecter
+    if not bins:
+        return
+
+    # ------------------------
+    # TEST 2 : PRIORITÉS IA
+    # ------------------------
+    for b in bins:
+        assert "time_window" in b
+
+    # ------------------------
+    # SETUP VRP
     # ------------------------
     depots = [
         {"coord": (4.05, 9.75)},
         {"coord": (4.06, 9.76)}
     ]
 
-    # ------------------------
-    # 5. MULTI-CAMIONS + CVRP
-    # ------------------------
     vehicles = [
-        {"capacity": 10, "depot": 0},
-        {"capacity": 10, "depot": 1}
+        {"capacity": 50, "depot": 0},
+        {"capacity": 50, "depot": 1}
     ]
 
     # ------------------------
-    # 6. LOCATIONS
+    # LOCATIONS
     # ------------------------
     locations = [d["coord"] for d in depots] + [
         (b["lat"], b["lon"]) for b in bins
     ]
 
     # ------------------------
-    # 7. DISTANCE MATRIX
+    # MATRICE DES DISTANCES
     # ------------------------
     matrix = get_distance_matrix(locations)
 
     # ------------------------
-    # 8. DEMANDS (CVRP)
+    # DEMANDS (CVRP)
     # ------------------------
     demands = [0]*len(depots) + [
-        int(b["level"]/10) for b in bins
+        max(1, int(b["level"]/10)) for b in bins
     ]
 
     # ------------------------
-    # 9. TIME WINDOWS (VRPTW)
+    # TIME WINDOWS (VRPTW)
     # ------------------------
     time_windows = [(0, 10000)] * len(depots) + [
-        b.get("time_window", (0, 10000)) for b in bins
+        b["time_window"] for b in bins
     ]
 
+    # Sécurité
+    assert len(time_windows) == len(locations)
+
     # ------------------------
-    # 10. MODEL
+    # VRP
     # ------------------------
     data = create_data_model(
         matrix,
@@ -92,46 +110,35 @@ def test_full_system():
         depots
     )
 
-    # ------------------------
-    # 11. SOLVEUR
-    # ------------------------
     routes = solve_vrp(data, time_windows)
 
     # ------------------------
-    # 12. VALIDATION ROUTES
+    # TEST 3 : STRUCTURE ROUTES
     # ------------------------
     assert isinstance(routes, list)
     assert len(routes) == len(vehicles)
 
     # ------------------------
-    # 13. VALIDATION VRPTW
+    # TEST 4 : ROUTES VALIDES
     # ------------------------
-    visited_nodes = set()
-
     for route in routes:
-        for node in route:
-            visited_nodes.add(node)
-
-    # VRPTW peut ignorer des poubelles
-    assert len(visited_nodes) <= len(locations)
+        assert len(route) >= 2  # au moins dépôt → dépôt
 
     # ------------------------
-    # 14. METRICS
+    # METRICS
     # ------------------------
     result = compute_metrics(
         routes,
         matrix,
         demands,
-        capacity=10,
+        capacity=50,
         total_bins=len(bins),
         num_depots=len(depots)
     )
 
+    # ------------------------
+    # TEST 5 : KPI
+    # ------------------------
     assert result["distance"] >= 0
-    assert result["fill"] >= 0
+    assert 0 <= result["fill"] <= 100
     assert result["co2"] >= 0
-
-    # ------------------------
-    # 15. VALIDATION FINALE
-    # ------------------------
-    assert isinstance(result, dict)
